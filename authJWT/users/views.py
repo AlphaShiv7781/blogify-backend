@@ -22,34 +22,43 @@ class LoginView(APIView):
         email = request.data.get('email')
         password = request.data.get('password')
 
+        #
         user = User.objects.filter(email=email).first()
 
         if user is None:
             raise AuthenticationFailed('User not found')
 
-        if not user.check_password(password):  # Validate hashed password
+        
+        if not user.check_password(password):
             raise AuthenticationFailed('Incorrect password')
 
+        # JWT payload
         payload = {
             'id': user.id,
-            'exp': datetime.datetime.utcnow() + datetime.timedelta(minutes=60),
-            'iat': datetime.datetime.utcnow()
+            'exp': datetime.datetime.utcnow() + datetime.timedelta(minutes=60),  
+            'iat': datetime.datetime.utcnow()  
         }
 
+        
         token = jwt.encode(payload, settings.SECRET_KEY, algorithm='HS256')
 
+        
         response = Response()
-        response.set_cookie(
-            key='jwt',
-            value=token,
-            httponly=True,
-            samesite='Lax',  # Adjust for better cross-origin handling
-            secure=False  # Set True in production with HTTPS
-        )
+        # response.set_cookie(
+        #     key='jwt',          # Cookie name
+        #     value=token,        # Token value
+        #     httponly=True,      # Prevent client-side JavaScript from accessing the cookie
+        #     secure=False,       # Set to True if using HTTPS
+        #     samesite='Lax',     # Helps prevent CSRF attacks
+        #     path='/'            # Cookie accessible for all routes
+        # )
 
+        # Add token data to the response body
         response.data = {
             'jwt': token
         }
+        
+        print(response.data)
 
         return response
 
@@ -58,21 +67,25 @@ class LoginView(APIView):
 class UserView(APIView):
     def get(self, request):
         token = request.COOKIES.get('jwt')
+        print(f"JWT token from cookie: {token}")
 
         if not token:
-            raise AuthenticationFailed('Unauthenticated')
+            raise AuthenticationFailed('Token not found')
 
         try:
             payload = jwt.decode(token, settings.SECRET_KEY, algorithms=['HS256'])
+            print(f"Decoded Payload: {payload}")
         except jwt.ExpiredSignatureError:
-            raise AuthenticationFailed('Token has expired')
+            raise AuthenticationFailed('Token expired')
         except jwt.InvalidTokenError:
             raise AuthenticationFailed('Invalid token')
 
         user = User.objects.filter(id=payload['id']).first()
-        serializer = UserSerializer(user)
+        if not user:
+            raise AuthenticationFailed('User not found')
 
-        return Response(serializer.data) 
+        serializer = UserSerializer(user)
+        return Response(serializer.data)
 
 
 
